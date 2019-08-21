@@ -887,6 +887,42 @@
      "name": "",
      "why": "key compromise"
     }
+   },
+   {
+    "issuerName": "MHIxCzAJBgNVBAYTAlVTMQswCQYDVQQIEwJUWDEQMA4GA1UEBxMHSG91c3RvbjEVMBMGA1UEChMMY1BhbmVsLCBJbmMuMS0wKwYDVQQDEyRjUGFuZWwsIEluYy4gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHk=",
+    "serialNumber": "APoMQ61QytU9iMPwSvd7ZcY=",
+    "enabled": true,
+    "details": {
+     "who": "wthayer@mozilla.com",
+     "created": "2019-08-17T19:34:58Z",
+     "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1572287",
+     "name": "",
+     "why": "registry compromise"
+    }
+   },
+   {
+    "issuerName": "MHIxCzAJBgNVBAYTAlVTMQswCQYDVQQIEwJUWDEQMA4GA1UEBxMHSG91c3RvbjEVMBMGA1UEChMMY1BhbmVsLCBJbmMuMS0wKwYDVQQDEyRjUGFuZWwsIEluYy4gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHk=",
+    "serialNumber": "AKmRGsnMtC8mchZkrfEPQvs=",
+    "enabled": true,
+    "details": {
+     "who": "wthayer@mozilla.com",
+     "created": "2019-08-17T19:35:20Z",
+     "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1572287",
+     "name": "",
+     "why": "registry compromise"
+    }
+   },
+   {
+    "issuerName": "MCwxCzAJBgNVBAYTAktaMR0wGwYDVQQDExRRYXpuZXQgVHJ1c3QgTmV0d29yaw==",
+    "serialNumber": "PZV/yh+MD8hpLAGZTrVSMQNbnfE=",
+    "enabled": true,
+    "details": {
+     "who": "wthayer@mozilla.com",
+     "created": "2019-08-17T19:57:48Z",
+     "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1569803",
+     "name": "",
+     "why": "MITM root"
+    }
    }
   ]
  }

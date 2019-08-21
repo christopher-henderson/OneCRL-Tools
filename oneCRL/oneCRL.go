@@ -602,7 +602,7 @@ func AddEntries(records *Records, existing *Records, createBug bool, comment str
 			trimmedReviewer := strings.Trim(reviewer, " ")
 			if len(trimmedReviewer) > 0 {
 				flag := bugs.AttachmentFlag{}
-				flag.Name = "review"
+				flag.Name = "feedback"
 				flag.Status = "?"
 				flag.Requestee = trimmedReviewer
 				flag.New = true
