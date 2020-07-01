@@ -7,9 +7,8 @@ package batch
 import (
 	"math"
 
-	"github.com/mozilla/OneCRL-Tools/kinto/api/authz"
-
 	"github.com/mozilla/OneCRL-Tools/kinto/api"
+	"github.com/mozilla/OneCRL-Tools/kinto/api/authz"
 )
 
 // https://docs.kinto-storage.org/en/stable/api/1.x/batch.html
@@ -31,7 +30,7 @@ func (b *Batch) Post() string {
 	return "/batch"
 }
 
-// NewBatch a Batch whose inner requests are homogenous (Kinto allows for mixing requests
+// NewBatch returns a Batch whose inner requests are homogenous (Kinto allows for mixing requests
 // within batch operations (say, for example, two POSTs of records and one GET of a collection)) however this
 // API does not.
 func NewBatch(records []interface{}, perms *authz.Permissions, method, path string) *Batch {
