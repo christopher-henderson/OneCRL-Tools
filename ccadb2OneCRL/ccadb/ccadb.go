@@ -11,11 +11,14 @@ import (
 	"strings"
 
 	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/utils"
+	"github.com/pkg/errors"
 
 	"github.com/gocarina/gocsv"
 )
 
 const source = "https://ccadb-public.secure.force.com/mozilla/PublicInterCertsReadyToAddToOneCRLPEMCSV"
+
+type CCADB = []*Certificate
 
 type Certificate struct {
 	CAOwner                        string `csv:"CA Owner"`
@@ -58,6 +61,23 @@ func FromURL(url string) ([]*Certificate, error) {
 func FromReader(reader io.Reader) ([]*Certificate, error) {
 	report := make([]*Certificate, 0)
 	return report, gocsv.Unmarshal(reader, &report)
+}
+
+func (c *Certificate) HasCertificate() bool {
+	return strings.Trim(c.PemInfo, "'") != ""
+}
+
+func (c *Certificate) ParseCertificate() (*x509.Certificate, error) {
+	// The CCADB has the habit of double encoding strings with inner single quotes.
+	trimmed := strings.Trim(c.PemInfo, "'")
+	if trimmed == "" {
+		return nil, errors.New("CCADB record does not have a certificate")
+	}
+	b, _ := pem.Decode([]byte(trimmed))
+	if b == nil {
+		return nil, fmt.Errorf("fail to decode pem from CCADB: '%s'", c.PemInfo)
+	}
+	return x509.ParseCertificate(b.Bytes)
 }
 
 func (c *Certificate) IssuerSerial() (string, error) {

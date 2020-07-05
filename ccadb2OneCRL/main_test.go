@@ -2,12 +2,16 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/ccadb"
+
+	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/collections"
 
 	"github.com/mozilla/OneCRL-Tools/kinto/api/batch"
 
@@ -17,62 +21,36 @@ import (
 
 	"github.com/mozilla/OneCRL-Tools/kinto/api/authz"
 
-	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/ccadb"
-
 	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/onecrl"
 )
 
 func TestIntegration(t *testing.T) {
-	records := onecrl.NewOneCRL()
-	err := onecrl.Production.AllRecords(records)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	/////////
+	production := onecrl.NewOneCRL()
+	err := onecrl.Production.AllRecords(production)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Open("/home/chris/OneCRL-Tools/ccadb2OneCRL/PublicIntermediateCertsRevokedWithPEMCSV")
+	prodMap := collections.NewMapOfOneCRLFrom(production.Data)
+	/////////
+	staging := onecrl.NewOneCRL()
+	err = onecrl.Staging.AllRecords(staging)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	cRecords, err := ccadb.FromReader(f)
+	stagMap := collections.NewMapOfOneCRLFrom(staging.Data)
+	//////
+	union := prodMap.Union(stagMap)
+	//////
+	cRecords, err := ccadb.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	//t.Log(len(cRecords))
-	//t.Log(len(records.Data))
-	//is := make(map[string]bool)
-	//for _, r := range records.Data {
-	//	isr, err := r.IssuerSerial()
-	//	if err != nil {
-	//		t.Fatal(err)
-	//	}
-	//	if isr == "" {
-	//		continue
-	//	}
-	//	is[isr] = true
-	//}
-	set, _ := onecrl.NewOneCRLSet(records)
-	if err != nil {
-		t.Fatal(err)
-	}
-	aligned := 0
-	for _, r := range cRecords {
-		is, err := r.IssuerSerial()
-		if err != nil {
-			continue
-		}
-		if set.Contains(is) {
-			aligned += 1
-			continue
-		}
-		keyHash, err := r.SubjectKeyHash()
-		if err != nil {
-			continue
-		}
-		if set.Contains(keyHash) {
-			aligned += 1
-		}
-	}
-	t.Log(aligned)
+	c := collections.SetOfCCADBFrom(cRecords)
+	//////
+	diff := c.Difference(union)
+	t.Log(len(diff))
 }
 
 func TestSyncing(t *testing.T) {
