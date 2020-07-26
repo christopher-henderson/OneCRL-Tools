@@ -488,3 +488,20 @@ func TestTransactionsAutoErrorAggregation(t *testing.T) {
 		t.Fatalf("expected an aggregation of errors, got: '%s', want '%s", got, want)
 	}
 }
+
+func TestNoRollback(t *testing.T) {
+	state := 0
+	err := Start().Then(NewTransaction().WithCommit(func() error {
+		state += 1
+		return nil
+	}).WithRollback(func() error {
+		state += 1
+		return nil
+	})).AutoClose(true).AutoRollbackOnError(true).Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != 1 {
+		t.Fatalf("got %d, want 1", state)
+	}
+}

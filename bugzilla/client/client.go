@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/mozilla/OneCRL-Tools/bugzilla/api/general"
 
@@ -22,6 +24,7 @@ import (
 )
 
 type Client struct {
+	host          string
 	base          string
 	authenticator auth.Authenticator
 	inner         *http.Client
@@ -35,7 +38,9 @@ type Client struct {
 // WITHOUT any path. The "rest" resource is automatically appended to
 // every constructed client.
 func NewClient(host string) *Client {
+	host = strings.TrimRight(host, "/")
 	return &Client{
+		host:          host,
 		base:          host + "/rest",
 		authenticator: new(auth.Unauthenticated),
 		inner:         new(http.Client),
@@ -82,6 +87,10 @@ func (c *Client) CreateAttachment(attachment *attachments.Create) (*attachments.
 func (c *Client) UpdateBug(bug *bugs.Update) (*bugs.UpdateResponse, error) {
 	resp := new(bugs.UpdateResponse)
 	return resp, c.do(bug, resp)
+}
+
+func (c *Client) ShowBug(id int) string {
+	return fmt.Sprintf("%s/show_bug.cgi?id=%d", c.host, id)
 }
 
 func (c *Client) do(in api.Endpoint, out interface{}) error {

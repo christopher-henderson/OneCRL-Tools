@@ -221,7 +221,9 @@ func (txs *Transactions) Commit() (err error) {
 	}
 	if txs.autoRollback {
 		defer func() {
-			errors.add(txs.Rollback())
+			if errors.inner != nil {
+				errors.add(txs.Rollback())
+			}
 		}()
 	}
 	for _, tx := range txs.txQueue {

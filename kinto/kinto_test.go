@@ -186,9 +186,20 @@ func TestKintoSigner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	status, err := local.SignerStatusFor(onecrl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.InReview() {
+		t.Fatal("collection is unexpectedly in review")
+	}
 	err = local.ToReview(onecrl)
 	if err != nil {
 		t.Fatal(err)
+	}
+	status, err = local.SignerStatusFor(onecrl)
+	if !status.InReview() {
+		t.Fatal("collection is unexpectedly not in review")
 	}
 	err = local.ToSign(onecrl)
 	if err != nil {
@@ -197,6 +208,22 @@ func TestKintoSigner(t *testing.T) {
 	err = local.ToSigned(onecrl)
 	if err != nil {
 		t.Fatal(err)
+	}
+	err = local.ToReview(onecrl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err = local.SignerStatusFor(onecrl)
+	if !status.InReview() {
+		t.Fatal("collection is unexpectedly not in review")
+	}
+	err = local.ToRollBack(onecrl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err = local.SignerStatusFor(onecrl)
+	if status.InReview() {
+		t.Fatal("collection is unexpectedly in review")
 	}
 }
 
@@ -207,6 +234,33 @@ func TestNewRecord(t *testing.T) {
 	err := local.NewRecord(NewOneCRL(), record)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteRecord(t *testing.T) {
+	o := NewOneCRL()
+	record := &OneCRLRecord{
+		IssuerName: "honest achmed's",
+	}
+	err := local.NewRecord(o, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := local.Delete(o, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Data.Deleted {
+		t.Fatalf("kinto deletion response says that '%s' was not deleted", record.ID())
+	}
+	err = local.AllRecords(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range o.Data {
+		if r.ID() == record.ID() {
+			t.Fatalf("expected '%s' to be deleted but it was not", r.ID())
+		}
 	}
 }
 

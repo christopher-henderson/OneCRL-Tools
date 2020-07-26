@@ -1,12 +1,11 @@
 package onecrl
 
 import (
-	"crypto/sha256"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/base64"
 	"fmt"
-	"math/big"
+
+	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/ccadb"
 
 	"github.com/pkg/errors"
 
@@ -34,13 +33,14 @@ type OneCRL struct {
 }
 
 type Record struct {
-	Schema       int     `json:"schema"`
-	Details      Details `json:"details"`
-	Enabled      bool    `json:"enabled"`
-	IssuerName   string  `json:"issuerName,omitempty"`
-	SerialNumber string  `json:"serialNumber,omitempty"`
-	Subject      string  `json:"subject,omitempty"`
-	PubKeyHash   string  `json:"pubKeyHash,omitempty"`
+	CCADB        *ccadb.Certificate `json:"-"`
+	Schema       int                `json:"schema"`
+	Details      Details            `json:"details"`
+	Enabled      bool               `json:"enabled"`
+	IssuerName   string             `json:"issuerName,omitempty"`
+	SerialNumber string             `json:"serialNumber,omitempty"`
+	Subject      string             `json:"subject,omitempty"`
+	PubKeyHash   string             `json:"pubKeyHash,omitempty"`
 	*api.Record
 }
 
@@ -89,6 +89,81 @@ func (r *Record) ParseIssuer() (*pkix.RDNSequence, error) {
 	return issuer, nil
 }
 
+type Comparison struct {
+	OneCRL string
+	CCADB  string
+}
+
+type IssuerSerialComparison struct {
+	Issuer Comparison `json:"issuer"`
+	Serial Comparison `json:"serial"`
+}
+
+type SubjectKeyHashComparison struct {
+	Subject Comparison `json:"subject"`
+	Keyhash Comparison `json:"keyHash"`
+}
+
+func (r *Record) ToComparison() (interface{}, error) {
+	switch r.Type() {
+	case IssuerSerial:
+		return IssuerSerialComparison{
+			Issuer: Comparison{
+				OneCRL: r.IssuerName,
+				CCADB:  r.CCADB.CertificateIssuerName,
+			},
+			Serial: Comparison{
+				OneCRL: r.SerialNumber,
+				CCADB:  r.CCADB.CertificateSerialNumber,
+			},
+		}, nil
+	case SubjectKeyHash:
+		subject, err := r.ParseSubject()
+		if err != nil {
+			return nil, err
+		}
+		raw, err := utils.B64Decode(r.PubKeyHash)
+		if err != nil {
+			return nil, err
+		}
+		return SubjectKeyHashComparison{
+			Subject: Comparison{
+				OneCRL: r.Subject,
+				CCADB:  subject.String(),
+			},
+			Keyhash: Comparison{
+				OneCRL: r.PubKeyHash,
+				CCADB:  fmt.Sprintf("%X", raw),
+			},
+		}, nil
+	default:
+		panic("non-exhaustive switch")
+	}
+}
+
+func FromCCADB(c *ccadb.Certificate) (*Record, error) {
+	cert, err := c.ParseCertificate()
+	if err != nil {
+		return nil, err
+	}
+	record := &Record{
+		CCADB: c,
+		Details: Details{
+			Bug:     "",
+			Who:     "",
+			Why:     "",
+			Name:    "",
+			Created: "",
+		},
+		Enabled:      false,
+		IssuerName:   utils.B64Encode(cert.RawIssuer),
+		SerialNumber: utils.B64Encode(cert.SerialNumber.Bytes()),
+		Subject:      "",
+		PubKeyHash:   "",
+	}
+	return record, nil
+}
+
 func parseRDNS(rdns string) (*pkix.RDNSequence, error) {
 	i, err := utils.B64Decode(rdns)
 	if err != nil {
@@ -100,122 +175,4 @@ func parseRDNS(rdns string) (*pkix.RDNSequence, error) {
 		return nil, errors.Wrap(err, fmt.Sprintf("OneCRL RDNS asn1 decode error for '%s'", rdns))
 	}
 	return r, nil
-}
-
-func (r *Record) IssuerSerial() (string, error) {
-	if r.IssuerName == "" && r.SerialNumber == "" {
-		return "", nil
-	}
-	issuer, err := base64.StdEncoding.DecodeString(r.IssuerName)
-	if err != nil {
-		return "", err
-	}
-	serial, err := base64.StdEncoding.DecodeString(r.SerialNumber)
-	if err != nil {
-		return "", err
-	}
-	i := &pkix.RDNSequence{}
-	_, err = asn1.Unmarshal(issuer, i)
-	if err != nil {
-		return "", err
-	}
-	utils.Normalize(i)
-	s := big.NewInt(0).SetBytes(serial)
-	return string(append([]byte(i.String()), s.Bytes()...)), nil
-}
-
-func (r *Record) SubjectKeyHash() (string, error) {
-	// The returned CSV is not so reliable on
-	// having these fields, but they are certainly
-	// in the certificate.
-	//
-	// The CCADB puts single quotes inside double quotes, which
-	// breaks the parseability of the PEM.
-	subjectBytes, err := base64.StdEncoding.DecodeString(r.Subject)
-	if err != nil {
-		return "", err
-	}
-	subject := pkix.RDNSequence{}
-	_, err = asn1.Unmarshal(subjectBytes, &subject)
-	if err != nil {
-		return "", nil
-	}
-	utils.Normalize(&subject)
-	hasher := sha256.New()
-	//hasher.Write(cert.RawSubjectPublicKeyInfo)
-	return base64.StdEncoding.EncodeToString(hasher.Sum([]byte(subject.String()))), nil
-}
-
-type IssuerSerialSet map[string]*Record
-
-func (iss IssuerSerialSet) Put(r *Record) error {
-	is, err := r.IssuerSerial()
-	if err != nil {
-		return err
-	}
-	iss[is] = r
-	return nil
-}
-
-func (iss IssuerSerialSet) Contains(is string) bool {
-	_, ok := iss[is]
-	return ok
-}
-
-func (iss IssuerSerialSet) Union(other IssuerSerialSet) IssuerSerialSet {
-	union := IssuerSerialSet{}
-	for k, v := range iss {
-		union[k] = v
-	}
-	for k, v := range other {
-		union[k] = v
-	}
-	return union
-}
-
-type PubKeyhashSet map[string]*Record
-
-func (sks PubKeyhashSet) Put(r *Record) error {
-	sks[r.PubKeyHash] = r
-	return nil
-}
-
-func (sks PubKeyhashSet) Contains(pkhash string) bool {
-	_, ok := sks[pkhash]
-	return ok
-}
-
-func (sks PubKeyhashSet) Union(other PubKeyhashSet) PubKeyhashSet {
-	union := PubKeyhashSet{}
-	for k, v := range sks {
-		union[k] = v
-	}
-	for k, v := range other {
-		union[k] = v
-	}
-	return union
-}
-
-type OneCRLSet struct {
-	issuerSerial IssuerSerialSet
-	pubkeyHash   PubKeyhashSet
-}
-
-func NewOneCRLSet(oneCRL *OneCRL) (OneCRLSet, error) {
-	set := OneCRLSet{
-		issuerSerial: IssuerSerialSet{},
-		pubkeyHash:   PubKeyhashSet{},
-	}
-	for _, record := range oneCRL.Data {
-		if record.IssuerName != "" && record.SerialNumber != "" {
-			set.issuerSerial.Put(record)
-		} else {
-			set.pubkeyHash.Put(record)
-		}
-	}
-	return set, nil
-}
-
-func (o *OneCRLSet) Contains(identifier string) bool {
-	return o.issuerSerial.Contains(identifier) || o.pubkeyHash.Contains(identifier)
 }

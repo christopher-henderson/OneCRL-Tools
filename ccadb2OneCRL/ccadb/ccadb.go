@@ -1,16 +1,13 @@
 package ccadb
 
 import (
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/utils"
 	"github.com/pkg/errors"
 
 	"github.com/gocarina/gocsv"
@@ -68,60 +65,63 @@ func (c *Certificate) HasCertificate() bool {
 }
 
 func (c *Certificate) ParseCertificate() (*x509.Certificate, error) {
-	// The CCADB has the habit of double encoding strings with inner single quotes.
-	trimmed := strings.Trim(c.PemInfo, "'")
-	if trimmed == "" {
+	p := c.PEM()
+	if p == "" {
 		return nil, errors.New("CCADB record does not have a certificate")
 	}
-	b, _ := pem.Decode([]byte(trimmed))
+	b, _ := pem.Decode([]byte(p))
 	if b == nil {
 		return nil, fmt.Errorf("fail to decode pem from CCADB: '%s'", c.PemInfo)
 	}
 	return x509.ParseCertificate(b.Bytes)
 }
 
-func (c *Certificate) IssuerSerial() (string, error) {
-	// The returned CSV is not so reliable on
-	// having these fields, but they are certainly
-	// in the certificate.
-	//
-	// The CCADB puts single quotes inside double quotes, which
-	// breaks the parseability of the PEM.
-	trimmed := strings.Trim(c.PemInfo, "'")
-	if trimmed == "" {
-		return "", nil
-	}
-	b, _ := pem.Decode([]byte(trimmed))
-	if b == nil {
-		return "", fmt.Errorf("fail to decode pem: %s", c.PemInfo)
-	}
-	cert, err := x509.ParseCertificate(b.Bytes)
-	if err != nil {
-		return "", err
-	}
-	issuer := cert.Issuer.ToRDNSequence()
-	utils.Normalize(&issuer)
-	return string(append([]byte(issuer.String()), cert.SerialNumber.Bytes()...)), nil
-}
+//func (c *Certificate) IntoOneCRLRecord(template onecrl.Record) (*onecrl.Record, error) {
+//	cert, err := c.ParseCertificate()
+//	if err != nil {
+//		return nil, err
+//	}
+//	record := &onecrl.Record{
+//		Schema: template.Schema,
+//		Details: onecrl.Details{
+//			Bug:     "",
+//			Who:     "",
+//			Why:     "",
+//			Name:    "",
+//			Created: "",
+//		},
+//		Enabled:      false,
+//		IssuerName:   utils.B64Encode(cert.RawIssuer),
+//		SerialNumber: utils.B64Encode(cert.SerialNumber.Bytes()),
+//		Subject:      "",
+//		PubKeyHash:   "",
+//	}
+//	return record, nil
+//}
+//
+//func (c *Certificate) AsOneCRLRecord() (*onecrl.Record, error) {
+//	cert, err := c.ParseCertificate()
+//	if err != nil {
+//		return nil, err
+//	}
+//	record := &onecrl.Record{
+//		Details: onecrl.Details{
+//			Bug:     "",
+//			Who:     "",
+//			Why:     "",
+//			Name:    "",
+//			Created: "",
+//		},
+//		Enabled:      false,
+//		IssuerName:   utils.B64Encode(cert.RawIssuer),
+//		SerialNumber: utils.B64Encode(cert.SerialNumber.Bytes()),
+//		Subject:      "",
+//		PubKeyHash:   "",
+//	}
+//	return record, nil
+//}
 
-func (c *Certificate) SubjectKeyHash() (string, error) {
-	// The returned CSV is not so reliable on
-	// having these fields, but they are certainly
-	// in the certificate.
-	//
-	// The CCADB puts single quotes inside double quotes, which
-	// breaks the parseability of the PEM.
-	b, _ := pem.Decode([]byte(strings.Trim(c.PemInfo, "'")))
-	if b == nil {
-		return "", fmt.Errorf("fail to decode pem: %s", c.PemInfo)
-	}
-	cert, err := x509.ParseCertificate(b.Bytes)
-	if err != nil {
-		return "", err
-	}
-	subject := cert.Subject.ToRDNSequence()
-	utils.Normalize(&subject)
-	hasher := sha256.New()
-	hasher.Write(cert.RawSubjectPublicKeyInfo)
-	return base64.StdEncoding.EncodeToString(hasher.Sum([]byte(subject.String()))), nil
+// The CCADB has the habit of double encoding strings with inner single quotes.
+func (c *Certificate) PEM() string {
+	return strings.TrimSpace(strings.Trim(c.PemInfo, "'"))
 }

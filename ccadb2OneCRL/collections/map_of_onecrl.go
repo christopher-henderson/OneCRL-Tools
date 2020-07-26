@@ -2,7 +2,8 @@ package collections
 
 import (
 	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/ccadb"
 
@@ -24,7 +25,7 @@ func NewMapOfOneCRLFrom(records []*onecrl.Record) *MapOfOneCRL {
 	}
 	for _, record := range records {
 		if err := m.Add(record); err != nil {
-			log.Println(err)
+			log.WithError(err).Warn()
 		}
 	}
 	return m
@@ -72,14 +73,14 @@ func (m *MapOfOneCRL) Union(other *MapOfOneCRL) *MapOfOneCRL {
 func (m *MapOfOneCRL) Contains(record *ccadb.Certificate) bool {
 	is, err := IssuerSerialFromCCADB(record)
 	if err != nil {
-		log.Println(err)
+		log.WithError(err).Warn()
 	}
 	if _, ok := m.issuerSerial[is]; ok {
 		return true
 	}
 	skh, err := SubjectKeyHashFromCCADB(record)
 	if err != nil {
-		log.Println(err)
+		log.WithError(err).Warn()
 		return false
 	}
 	if _, ok := m.subjectKeyHash2[skh]; ok {
