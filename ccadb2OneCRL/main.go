@@ -2,6 +2,7 @@ package main // import "github.com/mozilla/OneCRL-Tools/ccadb2OneCRL"
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"os"
 	"time"
@@ -67,6 +68,25 @@ func Staging() (*kinto.Client, error) {
 	return c.WithAuthenticator(principal), nil
 }
 
+func ProductionCollection() *onecrl.OneCRL {
+	return Collection(os.Getenv("ONECRL_PRODUCTION_BUCKET"), os.Getenv("ONECRL_PRODUCTION_COLLECTION"))
+}
+
+func StagingCollection() *onecrl.OneCRL {
+	return Collection(os.Getenv("ONECRL_STAGING_BUCKET"), os.Getenv("ONECRL_STAGING_COLLECTION"))
+}
+
+func Collection(bucket, collection string) *onecrl.OneCRL {
+	o := onecrl.NewOneCRL()
+	if bucket != "" {
+		o.Bucket.ID = bucket
+	}
+	if collection != "" {
+		o.ID = collection
+	}
+	return o
+}
+
 func KintoPrincipal(user, password, token string) (auth.Authenticator, error) {
 	if user == "" && password == "" && token == "" {
 		return &auth.Unauthenticated{}, nil
@@ -87,21 +107,11 @@ func Bugzilla() *bugzilla.Client {
 	if os.Getenv("BUGZILLA") != "" {
 		bugz = os.Getenv("BUGZILLA")
 	}
-	//os.Setenv("BUGZILLA_HOST", "https://bugzilla-dev.allizom.org")
-	//os.Setenv("BUGZILLA_API_KEY", "PcKr3LgH6bL0WDXlPuC0wLhFTUuhT8UJSvPKF0UQ")
-	// A good goto is https://bugzilla-dev.allizom.org
 	return bugzilla.NewClient(bugz).
-		// Create an account in your target Bugzilla, head
-		// to preferences, and generate an API key for yourself.
 		WithAuth(&bugzAuth.ApiKey{os.Getenv("BUGZILLA_API_KEY")})
 }
 
-func isTest() bool {
-	return os.Getenv("TESTING") != ""
-}
-
 func main() {
-	log.Println(isTest())
 	log.SetReportCaller(true)
 	log.SetLevel(log.InfoLevel)
 	log.SetFormatter(&log.JSONFormatter{PrettyPrint: true})
@@ -118,6 +128,7 @@ func main() {
 	err = updater.Update()
 	if err != nil {
 		log.WithError(err).Error("update failed")
+		os.Exit(1)
 	}
 }
 
@@ -155,7 +166,7 @@ func (u *Updater) Update() error {
 	}
 	if inReview {
 		// @TODO send emails
-		log.Println("Staging is in review.")
+		log.Info("Staging is in review.")
 		return nil
 	}
 	err = transaction.Start().
@@ -167,7 +178,9 @@ func (u *Updater) Update() error {
 		AutoRollbackOnError(true).
 		AutoClose(true).
 		Commit()
-	log.Println(u.bugzilla.ShowBug(u.bugID))
+	if err == nil {
+		log.WithField("bugzilla", u.bugzilla.ShowBug(u.bugID)).Info("successfully completed update")
+	}
 	return err
 }
 
@@ -178,10 +191,6 @@ func (u *Updater) TryAuth() error {
 		err = e
 	} else if !ok {
 		err = fmt.Errorf("authentication for staging Kinto failed")
-	}
-	if isTest() {
-		log.Warn("'TESTING' environment variable is set, not attempting to authenticate with production.")
-		return err
 	}
 	ok, e = u.production.TryAuth()
 	if e != nil {
@@ -197,22 +206,22 @@ func (u *Updater) TryAuth() error {
 			err = fmt.Errorf("authentication for production Kinto failed")
 		}
 	}
-	return err
+	return errors.WithStack(err)
 }
 
 func (u *Updater) FindDiffs() error {
 	/////////
-	production := onecrl.NewOneCRL()
+	production := ProductionCollection()
 	err := u.production.AllRecords(production)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	prodMap := collections.NewMapOfOneCRLFrom(production.Data)
 	/////////
-	staging := onecrl.NewOneCRL()
+	staging := StagingCollection()
 	err = u.staging.AllRecords(staging)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	stagMap := collections.NewMapOfOneCRLFrom(staging.Data)
 	//////
@@ -220,7 +229,7 @@ func (u *Updater) FindDiffs() error {
 	//////
 	cRecords, err := ccadb.Default()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c := collections.SetOfCCADBFrom(cRecords)
 	//////
@@ -229,7 +238,7 @@ func (u *Updater) FindDiffs() error {
 	for _, diff := range diffs {
 		record, err := onecrl.FromCCADB(diff)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		u.records = append(u.records, record)
 	}
@@ -241,9 +250,9 @@ func (u *Updater) NoDiffs() bool {
 }
 
 func (u *Updater) StagingIsInReview() (bool, error) {
-	resp, err := u.staging.SignerStatusFor(onecrl.NewOneCRL())
+	resp, err := u.staging.SignerStatusFor(StagingCollection())
 	if err != nil {
-		return false, err
+		return false, errors.WithStack(err)
 	}
 	return resp.InReview(), nil
 }
@@ -251,20 +260,20 @@ func (u *Updater) StagingIsInReview() (bool, error) {
 func (u *Updater) PushToStaging() transaction.Transactor {
 	committed := 0
 	return transaction.NewTransaction().WithCommit(func() error {
-		o := onecrl.NewOneCRL()
+		collection := StagingCollection()
 		for _, record := range u.records {
-			err := u.staging.NewRecord(o, record)
+			err := u.staging.NewRecord(collection, record)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			committed += 1
 		}
 		return nil
-	}).WithRollback(func() error {
+	}).WithRollback(func(_ error) error {
 		var err error = nil
-		o := onecrl.NewOneCRL()
+		collection := StagingCollection()
 		for i := 0; i < committed; i++ {
-			_, e := u.staging.Delete(o, u.records[i])
+			_, e := u.staging.Delete(collection, u.records[i])
 			if e != nil {
 				if err == nil {
 					err = e
@@ -273,9 +282,15 @@ func (u *Updater) PushToStaging() transaction.Transactor {
 				}
 			}
 		}
-		return err
+		return errors.WithStack(err)
 	})
 }
+
+const attachmentWarning = "received an error while uploading an attachment to Bugzilla, however " +
+	"a 'Failed to fetch attachment ID <ID> from S3' error always occurs when attaching a bug. This is " +
+	"likely just a synchronization bug wherein Bugzilla saves a record to S3 and then immediately attempts " +
+	"to retrieve it, however S3 has not published the ID yet. If that is this error, then please " +
+	"ignore it."
 
 func (u *Updater) OpenBug() transaction.Transactor {
 	u.bugID = -1
@@ -296,7 +311,7 @@ func (u *Updater) OpenBug() transaction.Transactor {
 		}
 		resp, err := u.bugzilla.CreateBug(bug)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		u.bugID = resp.Id
 		for _, record := range u.records {
@@ -310,12 +325,11 @@ func (u *Updater) OpenBug() transaction.Transactor {
 			ContentType: "text/plain",
 		}).AddBug(resp.Id))
 		if err != nil {
-			// arrrrrg bugzilla breaky
-			//log.Println(err)
+			log.WithError(err).WithField("attachment", "BugData.txt").Warn(attachmentWarning)
 		}
 		additions, err := json.MarshalIndent(proposedAdditions, "", "  ")
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		_, err = u.bugzilla.CreateAttachment((&attachments.Create{
 			BugId:       resp.Id,
@@ -325,20 +339,19 @@ func (u *Updater) OpenBug() transaction.Transactor {
 			ContentType: "text/plain",
 		}).AddBug(resp.Id))
 		if err != nil {
-			// arrrrrg bugzilla breaky
-			//log.Println(err)
+			log.WithError(err).WithField("attachment", "OneCRLAdditions.txt").Warn(attachmentWarning)
 		}
 		decodes := make([]interface{}, 0)
 		for _, record := range u.records {
 			d, err := record.ToComparison()
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			decodes = append(decodes, d)
 		}
 		d, err := json.MarshalIndent(decodes, "", "  ")
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		_, err = u.bugzilla.CreateAttachment((&attachments.Create{
 			BugId:       resp.Id,
@@ -348,34 +361,42 @@ func (u *Updater) OpenBug() transaction.Transactor {
 			ContentType: "text/plain",
 		}).AddBug(resp.Id))
 		if err != nil {
-			// arrrrrg bugzilla breaky
-			//log.Println(err)
+			log.WithError(err).WithField("attachment", "DecodedEntries.txt").Warn(attachmentWarning)
 		}
 		return nil
-	}).WithRollback(func() error {
+	}).WithRollback(func(cause error) error {
 		if u.bugID == -1 {
 			return nil
 		}
-		_, err := u.bugzilla.UpdateBug(bugs.Invalidate(u.bugID, "tool failure"))
-		return err
+		report := &strings.Builder{}
+		logger := log.New()
+		logger.SetFormatter(&log.JSONFormatter{PrettyPrint: true})
+		logger.SetOutput(report)
+		logger.WithError(cause).
+			WithField("stacktrace", fmt.Sprintf("%+v", cause)). // "%+v" gets us a stack trace printed out
+			Error("This tool experienced a fatal error downstream of posting this bug. This bug will be " +
+				"closed. Please review the provided cause and call site of the cause for more information.")
+		log.WithError(cause).WithField("bugzilla", u.bugzilla.ShowBug(u.bugID)).Error("closing the listed " +
+			"bug due to a critical failure")
+		_, err := u.bugzilla.UpdateBug(bugs.Invalidate(u.bugID, report.String()))
+		return errors.WithStack(err)
 	})
 }
 
 func (u *Updater) UpdateRecordsWithBugID() transaction.Transactor {
 	return transaction.NewTransaction().WithCommit(func() error {
-		o := onecrl.NewOneCRL()
+		collection := StagingCollection()
 		for _, record := range u.records {
 			if record == nil {
 				continue
 			}
-			err := u.staging.UpdateRecord(o, record)
+			err := u.staging.UpdateRecord(collection, record)
 			if err != nil {
-				// Maybe not return...?
-				return err
+				return errors.WithStack(err)
 			}
 		}
-		return u.staging.ToSign(o)
-	}).WithRollback(func() error {
+		return errors.WithStack(u.staging.ToSign(collection))
+	}).WithRollback(func(_ error) error {
 		// Upstream transactions are going to delete these records
 		// anyways, so I don't really see much of anything to do here.
 		return nil
@@ -384,25 +405,22 @@ func (u *Updater) UpdateRecordsWithBugID() transaction.Transactor {
 
 func (u *Updater) PutStagingIntoReview() transaction.Transactor {
 	return transaction.NewTransaction().WithCommit(func() error {
-		return u.staging.ToReview(onecrl.NewOneCRL())
-	}).WithRollback(func() error {
-		return u.staging.ToRollBack(onecrl.NewOneCRL())
+		return errors.WithStack(u.staging.ToReview(StagingCollection()))
+	}).WithRollback(func(_ error) error {
+		return errors.WithStack(u.staging.ToRollBack(StagingCollection()))
 	})
 }
 
 func (u *Updater) PushToProduction() transaction.Transactor {
 	return transaction.NewTransaction().WithCommit(func() error {
-		if isTest() {
-			log.Warn("'TESTING' environment variable is set, not attempting to push changed to production.")
-			return nil
-		}
+		collection := ProductionCollection()
 		for _, record := range u.records {
 			// If we do not set the ID back to default then production will
 			// end up having IDs that were generated by staging rather than itself.
 			record.Id = ""
-			err := u.production.NewRecord(onecrl.NewOneCRL(), record)
+			err := u.production.NewRecord(collection, record)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 		return nil
