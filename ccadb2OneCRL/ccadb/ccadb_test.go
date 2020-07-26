@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 package ccadb
 
 import (
@@ -47,38 +51,6 @@ func TestSmoke(t *testing.T) {
 	fmt.Printf("%v", certs[0].PemInfo)
 }
 
-func TestIssuerSerial(t *testing.T) {
-	certs, err := FromReader(strings.NewReader(example))
-	if err != nil {
-		panic(err)
-	}
-	if len(certs) != 1 {
-		t.Fatalf("unexpected number of parsed entried. Wanted 1, got %d", len(certs))
-	}
-	cert := certs[0]
-	is, err := cert.IssuerSerial()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(string(is))
-}
-
-func TestSubjectKeyHash(t *testing.T) {
-	certs, err := FromReader(strings.NewReader(example))
-	if err != nil {
-		panic(err)
-	}
-	if len(certs) != 1 {
-		t.Fatalf("unexpected number of parsed entried. Wanted 1, got %d", len(certs))
-	}
-	cert := certs[0]
-	sk, err := cert.SubjectKeyHash()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(string(sk))
-}
-
 func TestBadHeader(t *testing.T) {
 	r := csv.NewReader(strings.NewReader(example))
 	h, err := r.Read()
@@ -98,11 +70,17 @@ func TestBadHeader(t *testing.T) {
 	}
 }
 
-func TestPlease(t *testing.T) {
-	_, err := FromURL("https://ccadb-public.secure.force.com/mozilla/PublicIntermediateCertsRevokedWithPEMCSV")
+func TestCertificate_ParseCertificate(t *testing.T) {
+	certs, err := FromReader(strings.NewReader(example))
+	if err != nil {
+		panic(err)
+	}
+	if len(certs) != 1 {
+		t.Fatalf("unexpected number of parsed entried. Wanted 1, got %d", len(certs))
+	}
+	cert := certs[0]
+	_, err = cert.ParseCertificate()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
-
-// "subject": "MF8xCzAJBgNVBAYTAk5MMRIwEAYDVQQKEwlEaWdpTm90YXIxGjAYBgNVBAMTEURpZ2lOb3RhciBSb290IENBMSAwHgYJKoZIhvcNAQkBFhFpbmZvQGRpZ2lub3Rhci5ubA==", "pubKeyHash": "qQOvjAe7kbDZ4/OjDG1TM5/FvUfl1r20dlmIYMBooCQ=",

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 package onecrl
 
 import (
@@ -11,14 +15,10 @@ import (
 
 	"github.com/mozilla/OneCRL-Tools/ccadb2OneCRL/utils"
 
-	"github.com/mozilla/OneCRL-Tools/kinto"
 	"github.com/mozilla/OneCRL-Tools/kinto/api"
 	"github.com/mozilla/OneCRL-Tools/kinto/api/buckets"
 	"github.com/mozilla/OneCRL-Tools/kinto/api/collections"
 )
-
-var Production = kinto.NewClient("https", "firefox.settings.services.mozilla.com", "/v1")
-var Staging = kinto.NewClient("https", "settings.stage.mozaws.net", "/v1")
 
 func NewOneCRL() *OneCRL {
 	return &OneCRL{

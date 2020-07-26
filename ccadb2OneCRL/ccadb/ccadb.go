@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 package ccadb
 
 import (
@@ -75,51 +79,6 @@ func (c *Certificate) ParseCertificate() (*x509.Certificate, error) {
 	}
 	return x509.ParseCertificate(b.Bytes)
 }
-
-//func (c *Certificate) IntoOneCRLRecord(template onecrl.Record) (*onecrl.Record, error) {
-//	cert, err := c.ParseCertificate()
-//	if err != nil {
-//		return nil, err
-//	}
-//	record := &onecrl.Record{
-//		Schema: template.Schema,
-//		Details: onecrl.Details{
-//			Bug:     "",
-//			Who:     "",
-//			Why:     "",
-//			Name:    "",
-//			Created: "",
-//		},
-//		Enabled:      false,
-//		IssuerName:   utils.B64Encode(cert.RawIssuer),
-//		SerialNumber: utils.B64Encode(cert.SerialNumber.Bytes()),
-//		Subject:      "",
-//		PubKeyHash:   "",
-//	}
-//	return record, nil
-//}
-//
-//func (c *Certificate) AsOneCRLRecord() (*onecrl.Record, error) {
-//	cert, err := c.ParseCertificate()
-//	if err != nil {
-//		return nil, err
-//	}
-//	record := &onecrl.Record{
-//		Details: onecrl.Details{
-//			Bug:     "",
-//			Who:     "",
-//			Why:     "",
-//			Name:    "",
-//			Created: "",
-//		},
-//		Enabled:      false,
-//		IssuerName:   utils.B64Encode(cert.RawIssuer),
-//		SerialNumber: utils.B64Encode(cert.SerialNumber.Bytes()),
-//		Subject:      "",
-//		PubKeyHash:   "",
-//	}
-//	return record, nil
-//}
 
 // The CCADB has the habit of double encoding strings with inner single quotes.
 func (c *Certificate) PEM() string {
